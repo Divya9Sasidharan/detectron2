@@ -347,7 +347,7 @@ _C.MODEL.ROI_BOX_CASCADE_HEAD.IOUS = (0.5, 0.6, 0.7)
 # Mask Head
 # ---------------------------------------------------------------------------- #
 _C.MODEL.ROI_MASK_HEAD = CN()
-_C.MODEL.ROI_MASK_HEAD.NAME = "MaskRCNNConvUpsampleHead"
+_C.MODEL.ROI_MASK_HEAD.NAME = "Mask2FormerHead"
 _C.MODEL.ROI_MASK_HEAD.POOLER_RESOLUTION = 14
 _C.MODEL.ROI_MASK_HEAD.POOLER_SAMPLING_RATIO = 0
 _C.MODEL.ROI_MASK_HEAD.NUM_CONV = 0  # The number of convs in the mask head

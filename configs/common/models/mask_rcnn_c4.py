@@ -11,6 +11,7 @@ from detectron2.modeling.roi_heads import (
     FastRCNNOutputLayers,
     MaskRCNNConvUpsampleHead,
     Res5ROIHeads,
+    Mask2FormerHead,
 )
 
 from ..data.constants import constants
@@ -74,14 +75,23 @@ model = L(GeneralizedRCNN)(
             box2box_transform=L(Box2BoxTransform)(weights=(10, 10, 5, 5)),
             num_classes="${..num_classes}",
         ),
-        mask_head=L(MaskRCNNConvUpsampleHead)(
+        # mask_head=L(MaskRCNNConvUpsampleHead)(
+        #     input_shape=L(ShapeSpec)(
+        #         channels="${...res5.out_channels}",
+        #         width="${...pooler.output_size}",
+        #         height="${...pooler.output_size}",
+        #     ),
+        mask_head=l(Mask2FormerHead)(
             input_shape=L(ShapeSpec)(
                 channels="${...res5.out_channels}",
                 width="${...pooler.output_size}",
                 height="${...pooler.output_size}",
             ),
             num_classes="${..num_classes}",
-            conv_dims=[256],
+            conv_dims=[256, 256],
+            norm="FrozenBN",
+            num_convs=4,
+            num_classes=80,
         ),
     ),
     pixel_mean=constants.imagenet_bgr256_mean,

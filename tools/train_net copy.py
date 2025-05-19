@@ -114,14 +114,9 @@ def setup(args):
     Create configs and perform basic setups.
     """
     cfg = get_cfg()
-    cfg.merge_from_file("/Users/divyasasidharan/Documents/Schunk/detectron2/configs/COCO-InstanceSegmentation/maskformer2_R50_bs16_50ep.yaml")
-    cfg.MODEL.WEIGHTS = ""  # Train from scratch
-    cfg.MODEL.ROI_MASK_HEAD.NAME = "Mask2FormerHead"
-    cfg.DATASETS.TRAIN = ("my_train_dataset",)
-    cfg.DATASETS.TEST = ("my_val_dataset",)
-    cfg.SOLVER.MAX_ITER = 40
-    cfg.SOLVER.BASE_LR = 0.0001
-    cfg.OUTPUT_DIR = "./output"
+    cfg.merge_from_file(args.config_file)
+    cfg.merge_from_list(args.opts)
+    cfg.freeze()
     default_setup(cfg, args)
     return cfg
 

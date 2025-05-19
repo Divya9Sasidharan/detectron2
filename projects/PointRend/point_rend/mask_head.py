@@ -10,7 +10,7 @@ from torch.nn import functional as F
 
 from detectron2.config import configurable
 from detectron2.layers import Conv2d, ShapeSpec, cat, interpolate
-from detectron2.modeling import ROI_MASK_HEAD_REGISTRY
+from detectron2.modeling.roi_heads.mask_head import ROI_MASK_HEAD_REGISTRY
 from detectron2.modeling.roi_heads.mask_head import mask_rcnn_inference, mask_rcnn_loss
 from detectron2.structures import Boxes
 

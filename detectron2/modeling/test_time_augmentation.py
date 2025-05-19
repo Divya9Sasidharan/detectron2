@@ -19,9 +19,10 @@ from detectron2.data.transforms import (
 )
 from detectron2.structures import Boxes, Instances
 
-from .meta_arch import GeneralizedRCNN
+
 from .postprocessing import detector_postprocess
 from .roi_heads.fast_rcnn import fast_rcnn_inference_single_image
+
 
 __all__ = ["DatasetMapperTTA", "GeneralizedRCNNWithTTA"]
 
@@ -103,7 +104,7 @@ class GeneralizedRCNNWithTTA(nn.Module):
     A GeneralizedRCNN with test-time augmentation enabled.
     Its :meth:`__call__` method has the same interface as :meth:`GeneralizedRCNN.forward`.
     """
-
+   
     def __init__(self, cfg, model, tta_mapper=None, batch_size=3):
         """
         Args:
@@ -117,6 +118,7 @@ class GeneralizedRCNNWithTTA(nn.Module):
         super().__init__()
         if isinstance(model, DistributedDataParallel):
             model = model.module
+            from .meta_arch.rcnn import GeneralizedRCNN
         assert isinstance(
             model, GeneralizedRCNN
         ), "TTA is only supported on GeneralizedRCNN. Got a model of type {}".format(type(model))

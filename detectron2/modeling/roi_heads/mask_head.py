@@ -11,12 +11,21 @@ from detectron2.layers.wrappers import move_device_like
 from detectron2.structures import Instances
 from detectron2.utils.events import get_event_storage
 from detectron2.utils.registry import Registry
+# If you have these modules implemented or imported from Mask2Former:
+
+from mask2former.modeling.pixel_decoder.fpn import TransformerEncoderPixelDecoder as PixelDecoder
+from mask2former.modeling.transformer_decoder.maskformer_transformer_decoder import (
+    StandardTransformerDecoder)
+from mask2former.modeling.transformer_decoder.mask2former_transformer_decoder import (MultiScaleMaskedTransformerDecoder)
+from mask2former.modeling.criterion import mask2former_loss, mask2former_inference
 
 __all__ = [
     "BaseMaskRCNNHead",
     "MaskRCNNConvUpsampleHead",
     "build_mask_head",
     "ROI_MASK_HEAD_REGISTRY",
+    "Mask2FormerHead",
+    
 ]
 
 
@@ -157,6 +166,24 @@ def mask_rcnn_inference(pred_mask_logits: torch.Tensor, pred_instances: List[Ins
     for prob, instances in zip(mask_probs_pred, pred_instances):
         instances.pred_masks = prob  # (1, Hmask, Wmask)
 
+def mask2former_loss(pred_class_logits, pred_mask_logits, instances):
+    """
+    Compute the Mask2Former loss.
+
+    Args:
+        pred_class_logits (Tensor): A tensor of shape (B, num_queries, num_classes + 1)
+            for class predictions
+        pred_mask_logits (Tensor): A tensor of shape (B, num_queries, Hmask, Wmask)
+            for mask predictions
+        instances (list[Instances]): A list of N Instances, where N is the number of images
+            in the batch. These instances are in 1:1
+            correspondence with the pred_mask_logits. The ground-truth labels (class, box, mask,
+            ...) associated with each instance are stored in fields.
+    Returns:
+
+        mask_loss (Tensor): A scalar tensor containing the loss.
+    """     
+
 
 class BaseMaskRCNNHead(nn.Module):
     """
@@ -289,6 +316,98 @@ class MaskRCNNConvUpsampleHead(BaseMaskRCNNHead, nn.Sequential):
             x = layer(x)
         return x
 
+@ROI_MASK_HEAD_REGISTRY.register()
+class Mask2FormerHead(BaseMaskRCNNHead):
+    """
+    Mask2Former-style mask head for Detectron2.
+    """
+
+    @configurable
+    def __init__(
+        self,
+        input_shape: ShapeSpec,
+        *,
+        num_classes,
+        hidden_dim=256,
+        num_queries=100,
+        pixel_decoder=None,
+        transformer_decoder=None,
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.num_classes = num_classes
+        self.hidden_dim = hidden_dim
+        self.num_queries = num_queries
+
+        # Use actual pixel decoder and transformer decoder
+        self.pixel_decoder = pixel_decoder 
+        self.transformer_decoder = transformer_decoder 
+
+        # Learnable mask queries
+        self.query_embed = nn.Embedding(num_queries, hidden_dim)
+
+        # Class and mask predictors
+        self.class_predictor = nn.Linear(hidden_dim, num_classes + 1)  # +1 for "no object"
+        self.mask_embed_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+        )
+
+    @classmethod
+    def from_config(cls, cfg, input_shape):
+        # You should import or implement PixelDecoder and TransformerDecoder
+        pixel_decoder = PixelDecoder(cfg, input_shape)
+        transformer_decoder = StandardTransformerDecoder(cfg, hidden_dim=cfg.MODEL.MASK2FORMER.HIDDEN_DIM)
+        # pixel_decoder = nn.Identity()  # Placeholder
+        # transformer_decoder = nn.Identity()  # Placeholder
+
+        ret = super().from_config(cfg, input_shape)
+        ret.update(
+            num_classes=cfg.MODEL.ROI_HEADS.NUM_CLASSES,
+            hidden_dim=getattr(cfg.MODEL.MASK2FORMER, "HIDDEN_DIM", 256),
+            num_queries=getattr(cfg.MODEL.MASK2FORMER, "NUM_QUERIES", 100),
+            pixel_decoder=pixel_decoder,
+            transformer_decoder=transformer_decoder,
+            input_shape=input_shape,
+        )
+        return ret
+
+    def layers(self, x):
+        # x: input features from backbone/FPN
+        mask_features, multi_scale_features = self.pixel_decoder(x)
+        # mask_features: (B, hidden_dim, H, W)
+        # multi_scale_features: list of (B, C, H, W)
+
+        # Prepare queries
+        queries = self.query_embed.weight.unsqueeze(1)  # (num_queries, 1, hidden_dim)
+
+        # Transformer decoder expects (num_queries, B, hidden_dim)
+        # multi_scale_features may need to be adapted for your transformer
+        transformer_output = self.transformer_decoder(
+            queries, multi_scale_features
+        )  # (num_queries, B, hidden_dim)
+
+        # Predict classes and masks
+        class_logits = self.class_predictor(transformer_output)  # (num_queries, B, num_classes+1)
+        mask_embed = self.mask_embed_head(transformer_output)   # (num_queries, B, hidden_dim)
+
+        # Mask prediction: project mask_embed onto mask_features
+        # (B, hidden_dim, H, W) x (num_queries, B, hidden_dim) -> (B, num_queries, H, W)
+        mask_logits = torch.einsum("bchw,qbh->bqhw", mask_features, mask_embed)
+
+        return class_logits, mask_logits
+
+    def forward(self, x, instances):
+        class_logits, mask_logits = self.layers(x)
+        if self.training:
+            # TODO: Implement Mask2Former loss (set criterion, Hungarian matching, etc.)
+            loss = mask2former_loss(class_logits, mask_logits, instances)
+            return {"loss_mask": loss * self.loss_weight}
+        else:
+            # TODO: Implement inference logic (mask assignment, thresholding, etc.)
+            mask2former_inference(class_logits, mask_logits, instances)
+            return instances
 
 def build_mask_head(cfg, input_shape):
     """
